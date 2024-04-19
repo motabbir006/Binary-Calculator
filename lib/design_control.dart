@@ -1,494 +1,249 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
-class MyHomePage extends StatefulWidget {
-  _MyHomePageState createState() => _MyHomePageState();
+class BinaryCalculator extends StatefulWidget {
+  @override
+  _BinaryCalculatorState createState() => _BinaryCalculatorState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  var test;
-  static var userQuestion = '';
-  var answer; //used to compute
-  var displayAnswer = ''; //display final answer
-  var colourTheme = Colors.deepPurple;
-  static List<String> finalElements = [];
-  static var editQuestion = '';
+class _BinaryCalculatorState extends State<BinaryCalculator> {
+  String userInput = '';
+  String answer = '';
+  List<String> history = [];
+  List<String> undoHistory = [];
 
-  void _buttonEqual() {
-    answer = 0;
-
-    editQuestion = userQuestion;
-
-    for (var i = 0; i < editQuestion.length - 2; i++) {
-      //check for Double Negation
-      if (editQuestion[i] == '-' && editQuestion[i + 1] == '-') {
-        // 1--2 -> 1+2
-        editQuestion = editQuestion.substring(0, i) +
-            '+' +
-            editQuestion.substring(i + 2, editQuestion.length);
-      }
-    }
-
-    for (var i = 1; i < editQuestion.length; i++) {
-      //check for double plus
-      if (editQuestion[i] == '+' && editQuestion[i - 1] == '+') {
-        // 1+++2 -> 1+0+0+0+2
-        editQuestion = editQuestion.substring(0, i) +
-            '0' +
-            editQuestion.substring(i, editQuestion.length);
-      }
-    }
-
-    // +9 becomes 0+9
-    if (editQuestion[0] == '+') {
-      editQuestion = '0' + editQuestion;
-    }
-
-    //if the question starts with a number, add +0, this just helps with the addition functions
-    if (startsWithNumber(editQuestion)) {
-      editQuestion = '0+' + editQuestion;
-    }
-
-    //check if there's a '-' sign, execute subtraction
-    for (var i = 0; i < editQuestion.length; i++) {
-      if (editQuestion[i] == '-') {
-        setState(() {
-          _operateSubtraction();
-        });
-        break;
-      }
-    }
-
-    //break up numbers separated by +
-    finalElements = editQuestion.split("+");
-
-    //this helps with multiplicativeOperation that uses split(x), there needs to be an x
-    for (var i = 0; i < finalElements.length; i++) {
-      if (finalElements[i].contains('/')) {
-        finalElements[i] = "1*" + finalElements[i];
-      }
-    }
-
-    //if theres a x symbol, execute multiplication
-    for (var i = 0; i < finalElements.length; i++) {
-      if (finalElements[i].contains('*')) {
-        setState(() {
-          _operateMultiplication();
-        });
-        break;
-      }
-    }
-
-    //if there exists a '+' sign, execute addition
-    for (var i = 0; i < editQuestion.length; i++) {
-      if (editQuestion[i] == '+') {
-        setState(() {
-          _operateAddition();
-        });
-        break;
-      }
-    }
-
-    displayAnswer = answer.toString();
-
-    if (displayAnswer.endsWith('.0')) {
-      displayAnswer = displayAnswer.substring(0, displayAnswer.length - 2);
-    }
+  void addToInput(String value) {
+    setState(() {
+      userInput += value;
+    });
   }
 
-  void _operateAddition() {
-    for (var i = 0; i < finalElements.length; i++) {
-      answer = answer + double.parse(finalElements[i]);
-    }
+  void clearInput() {
+    setState(() {
+      userInput = '';
+      answer = '';
+      history.clear();
+      undoHistory.clear();
+    });
   }
 
-  //place a plus symbol infront of negative sign only if it doesn't have a sign before it
-  void _operateSubtraction() {
-    for (var i = 1; i < editQuestion.length; i++) {
-      if (editQuestion[i] == '-' && !isOperator(editQuestion[i - 1])) {
-        editQuestion = editQuestion.substring(0, i) +
-            '+' +
-            editQuestion.substring(i, editQuestion.length);
-        i = i + 2;
+  void deleteLastCharacter() {
+    setState(() {
+      if (userInput.isNotEmpty) {
+        userInput = userInput.substring(0, userInput.length - 1);
       }
-    }
+    });
   }
 
-  static String _operateDivision(String abc) {
-    double dividedResult;
-
-    List<String> divisiveElements = abc.split("/");
-    dividedResult =
-        double.parse(divisiveElements[0]) / double.parse(divisiveElements[1]);
-
-    if (divisiveElements.length > 2) {
-      for (var k = 2; k < divisiveElements.length; k++) {
-        dividedResult = dividedResult / double.parse(divisiveElements[k]);
+  void calculate() {
+    setState(() {
+      try {
+        answer = _evaluateExpression(userInput).toRadixString(2);
+        history.add(userInput + ' = ' + answer);
+        undoHistory.clear();
+      } catch (e) {
+        answer = 'Error';
       }
-    }
-
-    return dividedResult.toString();
+    });
   }
 
-  void _operateMultiplication() {
-    double multipliedResult;
+  void undo() {
+    setState(() {
+      if (history.isNotEmpty) {
+        String lastExpression = history.removeLast().split(' = ')[0];
+        undoHistory.add(lastExpression);
+        userInput = history.isNotEmpty ? history.last.split(' = ')[0] : '';
+        answer = '';
+      }
+    });
+  }
 
-    for (var i = 0; i < finalElements.length; i++) {
-      if (finalElements[i].contains("*")) {
-        List<String> multiplicativeElements = finalElements[i].split("*");
+  void redo() {
+    setState(() {
+      if (undoHistory.isNotEmpty) {
+        String nextExpression = undoHistory.removeLast();
+        history.add(nextExpression + ' = ' + _evaluateExpression(nextExpression).toRadixString(2));
+        userInput = nextExpression;
+        answer = history.last.split(' = ')[1];
+      }
+    });
+  }
 
-        //compute division first, then multiplication
-        for (var k = 0; k < multiplicativeElements.length; k++) {
-          if (multiplicativeElements[k].contains('/')) {
-            multiplicativeElements[k] =
-                _operateDivision(multiplicativeElements[k]);
-          }
+  int _evaluateExpression(String expression) {
+    List<String> operators = ['+', '-', '×', '÷'];
+    String currentNumber = '';
+    List<int> numbers = [];
+    List<String> operatorsList = [];
+
+    for (int i = 0; i < expression.length; i++) {
+      String char = expression[i];
+
+      if (char == '+' || char == '-' || char == '×' || char == '÷') {
+        operatorsList.add(char);
+        if (currentNumber.isNotEmpty) {
+          numbers.add(int.parse(currentNumber, radix: 2));
+          currentNumber = '';
         }
-
-        multipliedResult = double.parse(multiplicativeElements[0]) *
-            double.parse(multiplicativeElements[1]);
-
-        if (multiplicativeElements.length > 2) {
-          for (var k = 2; k < multiplicativeElements.length; k++) {
-            multipliedResult =
-                multipliedResult * double.parse(multiplicativeElements[k]);
-          }
-        }
-
-        finalElements[i] = multipliedResult.toString();
-      }
-    }
-  }
-
-  bool isOperator(String abc) {
-    var x = abc[0];
-
-    if (x == '+' || x == '-' || x == '*' || x == '/') {
-      return true;
-    }
-
-    return false;
-  }
-
-  bool startsWithNumber(String abc) {
-    var x = abc[0];
-
-    if (x == '0' ||
-        x == '1' ||
-        x == '2' ||
-        x == '3' ||
-        x == '4' ||
-        x == '5' ||
-        x == '6' ||
-        x == '7' ||
-        x == '8' ||
-        x == '9') {
-      return true;
-    }
-
-    return false;
-  }
-
-  void _buttonPercent() {
-    setState(() {
-      if (displayAnswer.toString() != '') {
-        _buttonClr();
-      }
-      userQuestion = userQuestion + '%';
-    });
-  }
-
-  void _buttonDel() {
-    if (userQuestion.length == 0) {
-    } else {
-      setState(() {
-        userQuestion = userQuestion.substring(0, userQuestion.length - 1);
-      });
-    }
-  }
-
-  void _buttonClr() {
-    setState(() {
-      userQuestion = '';
-      displayAnswer = '';
-    });
-  }
-
-  void _button7() {
-    setState(() {
-      if (displayAnswer.toString() != '') {
-        _buttonClr();
-      }
-      userQuestion = userQuestion + '7';
-    });
-  }
-
-  void _button8() {
-    setState(() {
-      if (displayAnswer.toString() != '') {
-        _buttonClr();
-      }
-      userQuestion = userQuestion + '8';
-    });
-  }
-
-  void _button9() {
-    setState(() {
-      if (displayAnswer.toString() != '') {
-        _buttonClr();
-      }
-      userQuestion = userQuestion + '9';
-    });
-  }
-
-  void _button6() {
-    setState(() {
-      if (displayAnswer.toString() != '') {
-        _buttonClr();
-      }
-      userQuestion = userQuestion + '6';
-    });
-  }
-
-  void _button5() {
-    setState(() {
-      if (displayAnswer.toString() != '') {
-        _buttonClr();
-      }
-      userQuestion = userQuestion + '5';
-    });
-  }
-
-  void _button4() {
-    setState(() {
-      if (displayAnswer.toString() != '') {
-        _buttonClr();
-      }
-      userQuestion = userQuestion + '4';
-    });
-  }
-
-  void _button3() {
-    setState(() {
-      if (displayAnswer.toString() != '') {
-        _buttonClr();
-      }
-      userQuestion = userQuestion + '3';
-    });
-  }
-
-  void _button2() {
-    setState(() {
-      if (displayAnswer.toString() != '') {
-        _buttonClr();
-      }
-      userQuestion = userQuestion + '2';
-    });
-  }
-
-  void _button1() {
-    setState(() {
-      if (displayAnswer.toString() != '') {
-        _buttonClr();
-      }
-      userQuestion = userQuestion + '1';
-    });
-  }
-
-  void _button0() {
-    setState(() {
-      if (displayAnswer.toString() != '') {
-        _buttonClr();
-      }
-      userQuestion = userQuestion + '0';
-    });
-  }
-
-  void _buttonDecimal() {
-    setState(() {
-      if (displayAnswer.toString() != '') {
-        _buttonClr();
-      }
-      userQuestion = userQuestion + '.';
-    });
-  }
-
-  void _buttonDivide() {
-    setState(() {
-      if (displayAnswer.toString() != '') {
-        _buttonClr();
-      }
-      userQuestion = userQuestion + '/';
-    });
-  }
-
-  void _buttonMultiply() {
-    setState(() {
-      if (displayAnswer.toString() != '') {
-        _buttonClr();
-        userQuestion = 'Ans' + '*';
       } else {
-        userQuestion = userQuestion + '*';
+        currentNumber += char;
       }
-    });
+    }
+
+    if (currentNumber.isNotEmpty) {
+      numbers.add(int.parse(currentNumber, radix: 2));
+    }
+
+    int result = numbers[0];
+    for (int i = 0; i < operatorsList.length; i++) {
+      String operator = operatorsList[i];
+      int operand = numbers[i + 1];
+
+      if (operator == '+') {
+        result += operand;
+      } else if (operator == '-') {
+        result -= operand;
+      } else if (operator == '×') {
+        result *= operand;
+      } else if (operator == '÷') {
+        result ~/= operand; // Integer division
+      }
+    }
+
+    return result;
   }
 
-  void _buttonSubtract() {
-    setState(() {
-      if (displayAnswer.toString() != '') {
-        _buttonClr();
-        userQuestion = 'Ans' + '-';
-      } else {
-        userQuestion = userQuestion + '-';
-      }
-    });
-  }
-
-  void _buttonAddition() {
-    setState(() {
-      if (displayAnswer.toString() != '') {
-        _buttonClr();
-        userQuestion = 'Ans' + '+';
-      } else {
-        userQuestion = userQuestion + '+';
-      }
-    });
-  }
-
-  void _buttonAns() {
-    setState(() {
-      if (displayAnswer.toString() != '') {
-        _buttonClr();
-      }
-      userQuestion = userQuestion + 'Ans';
-    });
+  Widget buildButton(String buttonText, Function() onTap) {
+    return Expanded(
+      child: Padding(
+        padding: EdgeInsets.all(8),
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.grey[400],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Center(
+              child: buttonText == 'C' || buttonText == 'DEL'
+                  ? Icon(
+                buttonText == 'C'
+                    ? FontAwesomeIcons.times
+                    : FontAwesomeIcons.backspace,
+                size: 25,
+              )
+                  : Text(
+                buttonText,
+                style: TextStyle(fontSize: 35),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // TODO: implement build
     return Scaffold(
-      backgroundColor: Colors.white60,
+      appBar: AppBar(
+        title: Text('Binary Calculator',style: TextStyle(fontSize: 25,fontWeight: FontWeight.bold,color: Colors.white),),
+        backgroundColor: Colors.blue,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.undo),
+            color: Colors.white60,
+            onPressed: undo,
+          ),
+          IconButton(
+            icon: Icon(Icons.redo),
+            onPressed: redo,
+            color: Colors.white60,
+          ),
+        ],
+      ),
       body: Column(
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: Container(
-                  height: 25,
-                ),
-              )
-            ],
-          ),
+          SizedBox(height: 20),
           Expanded(
-            flex: 3,
+            flex: 2,
             child: Container(
-              alignment: Alignment.topLeft,
-              child: Padding(
-                padding: EdgeInsets.only(top: 20, left: 20, right: 20),
-                child: Text(
-                  userQuestion,
-                  style: TextStyle(fontSize: 40, color: Colors.black),
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: Container(
-              padding: EdgeInsets.only(right: 20),
               alignment: Alignment.bottomRight,
+              padding: EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                displayAnswer.toString(),
-                style: TextStyle(fontSize: 50, color: CupertinoColors.black),
+                userInput,
+                style: TextStyle(fontSize: 32),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Container(
+              alignment: Alignment.bottomRight,
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                answer.toString(),
+                style: TextStyle(fontSize: 32),
               ),
             ),
           ),
           Expanded(
             child: Padding(
-              padding: EdgeInsets.only(left: 4, right: 4),
+              padding: EdgeInsets.all(8),
+              child: Row(
+                children: <Widget>[
+                  buildButton('1', () {
+                    addToInput('1');
+                  }),
+                  buildButton('0', () {
+                    addToInput('0');
+                  }),
+                  buildButton('DEL', deleteLastCharacter),
+                  buildButton('C', clearInput),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.all(8),
+              child: Row(
+                children: <Widget>[
+                  buildButton('+', () {
+                    addToInput('+');
+                  }),
+                  buildButton('-', () {
+                    addToInput('-');
+                  }),
+                  buildButton('×', () {
+                    addToInput('×');
+                  }),
+                  buildButton('÷', () {
+                    addToInput('÷');
+                  }),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.all(8),
               child: Row(
                 children: <Widget>[
                   Expanded(
                     child: Padding(
-                      padding: EdgeInsets.all(4),
+                      padding: EdgeInsets.only(right: 8),
                       child: GestureDetector(
-                        onTap: _buttonClr,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.red[400],
-                            child: Center(
-                              child: Text(
-                                'C',
-                                style: TextStyle(
-                                    fontSize: 25, color: Colors.white),
-                              ),
-                            ),
+                        onTap: calculate,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.blue,
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _buttonDel,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.red[400],
-                            child: Center(
-                              child: Text(
-                                'DEL',
-                                style: TextStyle(
-                                    fontSize: 25, color: Colors.white),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _buttonPercent,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.white,
-                            child: Center(
-                              child: Text(
-                                '%',
-                                style: TextStyle(
-                                    fontSize: 40,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.deepOrange),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _buttonDivide,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.white,
-                            child: Center(
-                              child: Text(
-                                '/',
-                                style: TextStyle(
-                                    fontSize: 40,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.deepOrange),
+                          child: Center(
+                            child: Text(
+                              '=',
+                              style: TextStyle(
+                                fontSize: 35,
+                                color: Colors.white,
                               ),
                             ),
                           ),
@@ -500,419 +255,6 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ),
           ),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(left: 4, right: 4),
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _button7,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.deepOrange,
-                            child: Center(
-                              child: Text(
-                                '7',
-                                style: TextStyle(
-                                    fontSize: 30,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _button8,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.deepOrange,
-                            child: Center(
-                              child: Text(
-                                '8',
-                                style: TextStyle(
-                                    fontSize: 30,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _button9,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.deepOrange,
-                            child: Center(
-                              child: Text(
-                                '9',
-                                style: TextStyle(
-                                    fontSize: 30,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _buttonMultiply,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.white,
-                            child: Center(
-                              child: Text(
-                                '*',
-                                style: TextStyle(
-                                    fontSize: 40,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.deepOrange),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(left: 4, right: 4),
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _button4,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.deepOrange,
-                            child: Center(
-                              child: Text(
-                                '4',
-                                style: TextStyle(
-                                    fontSize: 30,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _button5,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.deepOrange,
-                            child: Center(
-                              child: Text(
-                                '5',
-                                style: TextStyle(
-                                    fontSize: 30,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _button6,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.deepOrange,
-                            child: Center(
-                              child: Text(
-                                '6',
-                                style: TextStyle(
-                                    fontSize: 30,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _buttonSubtract,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.white,
-                            child: Center(
-                              child: Text(
-                                '-',
-                                style: TextStyle(
-                                    fontSize: 40,
-                                    color: Colors.deepOrange,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(left: 4, right: 4),
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _button1,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.deepOrange,
-                            child: Center(
-                              child: Text(
-                                '1',
-                                style: TextStyle(
-                                    fontSize: 30,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _button2,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.deepOrange,
-                            child: Center(
-                              child: Text(
-                                '2',
-                                style: TextStyle(
-                                    fontSize: 30,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _button3,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.deepOrange,
-                            child: Center(
-                              child: Text(
-                                '3',
-                                style: TextStyle(
-                                    fontSize: 30,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _buttonAddition,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.white,
-                            child: Center(
-                              child: Text(
-                                '+',
-                                style: TextStyle(
-                                    fontSize: 40,
-                                    color: Colors.deepOrange,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(left: 4, right: 4),
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _button0,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.deepOrange,
-                            child: Center(
-                              child: Text(
-                                '0',
-                                style: TextStyle(
-                                    fontSize: 30,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _buttonDecimal,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.deepOrange,
-                            child: Center(
-                              child: Text(
-                                '.',
-                                style: TextStyle(
-                                    fontSize: 40,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _buttonAns,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.deepOrange,
-                            child: Center(
-                              child: Text(
-                                'ANS',
-                                style: TextStyle(
-                                    fontSize: 25,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.all(4),
-                      child: GestureDetector(
-                        onTap: _buttonEqual,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            color: Colors.white,
-                            child: Center(
-                              child: Text(
-                                '=',
-                                style: TextStyle(
-                                    fontSize: 40,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.deepOrange),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Container(
-            child: Row(
-              children: <Widget>[
-                Container(
-                  height: 15,
-                )
-              ],
-            ),
-          )
         ],
       ),
     );
